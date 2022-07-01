@@ -1,0 +1,17 @@
+{
+    "name": "guild",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "build": "tsc",
+        "build2": "tsc && cpx ./dist/Guild.js ../Project1/js/plugins"
+    },
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@atsumaru/api-types": "github:atsumaru/api-types#master",
+        "cpx": "^1.5.0"
+    }
+}
