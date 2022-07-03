@@ -266,6 +266,10 @@
         $gameVariables.setValue(parameters.guildflg, value)
     }
 
+    function setGuildName(value: string) {
+        $gameActors.actor(2).setName(value)
+    }
+
     function setUserId(value: number) {
         $gameVariables.setValue(parameters.userId, value)
     }
@@ -274,11 +278,32 @@
         $gameVariables.setValue(parameters.guildId, value)
     }
 
-    async function getSignalList(): Promise<ISignalData[]> {
+    async function getSignalList(): Promise<ISignal[]> {
         if (!window.RPGAtsumaru) return []
 
         var signals = await window.RPGAtsumaru.signal.getGlobalSignals()
-        return signals.map((s) => JSON.parse(s.data) as ISignalData)
+        var datas = signals.map((s) => JSON.parse(s.data) as any[])
+
+        let result: ISignal[] = []
+        for (let data of datas) {
+            if (data[0] == "guild-build") {
+                result.push({
+                    type: data[0],
+                    userId: data[1],
+                    guildId: data[2],
+                    userName: data[3],
+                    guildName: data[4],
+                })
+            } else {
+                result.push({
+                    type: data[0],
+                    userId: data[1],
+                    guildId: data[2],
+                    userName: data[3],
+                })
+            }
+        }
+        return result
     }
 
     /**
@@ -286,9 +311,27 @@
      * @param data
      * @returns
      */
-    async function sendSignal(data: ISignalData) {
+    async function sendSignal(data: ISignal) {
         if (!window.RPGAtsumaru) return false
-        await window.RPGAtsumaru.signal.sendSignalToGlobal(JSON.stringify(data))
+
+        let sdata = ""
+        switch (data.type) {
+            case "guild-build":
+                sdata = JSON.stringify([
+                    data.type,
+                    data.userId,
+                    data.guildId,
+                    data.userName,
+                    data.guildName,
+                ])
+                break
+
+            case "guild-join":
+                sdata = JSON.stringify([data.type, data.userId, data.guildId, data.userName])
+                break
+        }
+
+        await window.RPGAtsumaru.signal.sendSignalToGlobal(sdata)
         return true
     }
 
@@ -299,7 +342,7 @@
      * @param guildName
      * @returns
      */
-    async function _MakeGuild(userName = "", guildName = ""): Promise<number> {
+    async function _MakeGuild(): Promise<number> {
         if (!window.RPGAtsumaru) {
             return RESULT.NOT_EXIST_RPG_ATSUMARU
         }
@@ -311,8 +354,23 @@
         var userId = getUserId()
         var guildId = await _GenerateNewGuildId()
 
-        var data: ISignalData = ["guild-join", guildId, userId, userName, guildName]
-        await sendSignal(data)
+        var userName = $gameActors.actor(1).name()
+        var guildName = $gameActors.actor(2).name()
+
+        await sendSignal({
+            type: "guild-build",
+            userId: userId,
+            guildId: guildId,
+            userName: userName,
+            guildName: guildName,
+        })
+
+        await sendSignal({
+            type: "guild-join",
+            guildId: guildId,
+            userId: userId,
+            userName: userName,
+        })
 
         setGuildFlg(GUILD_FLG.MASTER)
         setGuildId(guildId)
@@ -329,7 +387,7 @@
      * @param guildName
      * @returns
      */
-    async function _JoinGuild(userName = "", guildName = ""): Promise<number> {
+    async function _JoinGuild(): Promise<number> {
         if (!window.RPGAtsumaru) {
             return RESULT.NOT_EXIST_RPG_ATSUMARU
         }
@@ -341,13 +399,21 @@
         var guildId = getGuildId()
         var userId = getUserId()
 
-        const existGuild = await _IsExistGuild(guildId)
-        if (!existGuild) {
+        var userName = $gameActors.actor(1).name()
+
+        const guild = await _FetchGuildInfo(guildId)
+        if (!guild) {
             return RESULT.NOT_EXIST_GUILD
         }
 
-        var data: ISignalData = ["guild-join", guildId, userId, userName, guildName]
-        await sendSignal(data)
+        setGuildName(guild.guildName)
+
+        await sendSignal({
+            type: "guild-join",
+            userId: userId,
+            guildId: guildId,
+            userName: userName,
+        })
 
         setGuildFlg(GUILD_FLG.MEMBER)
         setGuildId(guildId)
@@ -360,19 +426,25 @@
             return 0
         }
         var signals = await getSignalList()
-        var memberIds = signals.filter((args) => args[0] == "guild-join").map((args) => args[1])
+        var guildIds = signals
+            .filter((args) => args.type == "guild-join")
+            .map((args) => args.userId)
 
         var guildId: number = 0
         do {
             guildId = Math.floor(Math.random() * 900000) + 100000
-        } while (memberIds.includes(guildId))
+        } while (guildIds.some((x) => x == guildId))
 
         return guildId
     }
 
-    async function _IsExistGuild(guildId: number): Promise<boolean> {
+    async function _FetchGuildInfo(guildId: number): Promise<IBuildGuildSignal | null> {
         var signals = await getSignalList()
-        return signals.some((s) => s[1] == guildId)
+        return (
+            signals
+                .filter((s): s is IBuildGuildSignal => s.type == "guild-build")
+                .find((s) => s.guildId == guildId) ?? null
+        )
     }
 
     /**
@@ -411,12 +483,15 @@
 
         var guildId = getGuildId()
         var signals = await getSignalList()
+
         var memberIds = signals
-            .filter((args) => args[0] == "guild-join" && args[1] == guildId)
-            .map((args) => args[2])
+            .filter((args): args is IJoinGuildSignal => args.type == "guild-join")
+            .filter((args) => args.guildId == guildId)
+            .map((args) => args.userId)
 
         const shareItems = await window.RPGAtsumaru.storage.getSharedItems(memberIds)
-        const datas = Object.values(shareItems)
+        const datas = Object.keys(shareItems)
+            .map((k) => shareItems[+k])
             .map((i) => JSON.parse(i) as ISharedData)
             .map((i) => i.data)
 
@@ -438,9 +513,9 @@
         return RESULT.SUCCESS
     }
 
-    function MakeGuild(this: IGameInterpreter, userName = "", guildName = "") {
+    function MakeGuild(this: IGameInterpreter) {
         this.bindPromiseForRPGAtsumaruPlugin(
-            _MakeGuild(userName, guildName),
+            _MakeGuild(),
             function (result: number) {
                 $gameVariables.setValue(parameters.errorMessage, 0)
                 $gameVariables.setValue(parameters.resultId, result)
@@ -452,9 +527,9 @@
         )
     }
 
-    function JoinGuild(this: IGameInterpreter, userName = "", guildName = "") {
+    function JoinGuild(this: IGameInterpreter) {
         this.bindPromiseForRPGAtsumaruPlugin(
-            _JoinGuild(userName, guildName),
+            _JoinGuild(),
             function (result: number) {
                 $gameVariables.setValue(parameters.errorMessage, 0)
                 $gameVariables.setValue(parameters.resultId, result)

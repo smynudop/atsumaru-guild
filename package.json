@@ -6,7 +6,7 @@
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
         "build": "tsc",
-        "build2": "tsc && cpx ./dist/Guild.js ../Project1/js/plugins"
+        "build2": "tsc && cpx ./dist/*.js ../Project1/js/plugins"
     },
     "author": "",
     "license": "ISC",

@@ -15,8 +15,22 @@ interface ISharedData {
     data: (1 | 0)[]
 }
 
-type ISignalType = "guild-join"
-type ISignalData = [ISignalType, number, number, string, string]
+type IJoinGuildSignal = {
+    type: "guild-join"
+    userId: number
+    guildId: number
+    userName: string
+}
+
+type IBuildGuildSignal = {
+    type: "guild-build"
+    userId: number
+    guildId: number
+    userName: string
+    guildName: string
+}
+
+type ISignal = IJoinGuildSignal | IBuildGuildSignal
 
 interface IGameInterpreter extends Function {
     bindPromiseForRPGAtsumaruPlugin: (
@@ -36,6 +50,7 @@ interface IGameVariables {
 }
 
 declare const $gameVariables: IGameVariables
+declare const $gameActors: any
 declare const Game_Interpreter: IGameInterpreter
 declare const $dataSystem: any
 declare const DataManager: any
